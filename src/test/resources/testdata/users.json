@@ -1,0 +1,6 @@
+{
+  "validUser": {
+    "username": "${APP_USERNAME}",
+    "password": "${APP_PASSWORD}"
+  }
+}

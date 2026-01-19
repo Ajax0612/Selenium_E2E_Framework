@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project
+        xmlns="http://maven.apache.org/POM/4.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>selenium-testng-framework</artifactId>
+    <version>1.1.0</version>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- Selenium -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+            <version>4.23.0</version>
+        </dependency>
+
+        <!-- TestNG (test scope only) -->
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>7.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Dotenv for local env files (optional) -->
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.0.2</version>
+        </dependency>
+
+        <!-- WebDriverManager -->
+        <dependency>
+            <groupId>io.github.bonigarcia</groupId>
+            <artifactId>webdrivermanager</artifactId>
+            <version>5.8.0</version>
+        </dependency>
+
+        <!-- Apache POI for Excel -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
+        <!-- ExtentReports for HTML reporting -->
+        <dependency>
+            <groupId>com.aventstack</groupId>
+            <artifactId>extentreports</artifactId>
+            <version>5.1.1</version>
+        </dependency>
+
+        <!-- Log4j2 (optional) -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.23.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.23.1</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Surefire runs TestNG with the suite selected by active profile -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.4.0</version>
+                <configuration>
+                    <suiteXmlFiles>
+                        <suiteXmlFile>${suiteFile}</suiteXmlFile>
+                    </suiteXmlFiles>
+                    <systemPropertyVariables>
+                        <HEADLESS>${headless}</HEADLESS>
+                        <BROWSER>${browser}</BROWSER>
+                        <REMOTE_URL>${remoteUrl}</REMOTE_URL>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Default: single-browser suite -->
+        <profile>
+            <id>single</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <suiteFile>testng.xml</suiteFile>
+                <browser>chrome</browser>
+                <headless>true</headless>
+                <remoteUrl></remoteUrl>
+            </properties>
+        </profile>
+
+        <!-- Cross-browser suite (Chrome + Firefox + Edge in parallel by tests) -->
+        <profile>
+            <id>cross</id>
+            <properties>
+                <suiteFile>testng-crossbrowser.xml</suiteFile>
+                <browser></browser>     <!-- suite passes browser per <test> -->
+                <headless>true</headless>
+                <remoteUrl></remoteUrl> <!-- set at runtime if using Grid -->
+            </properties>
+        </profile>
+
+        <!-- Parallel methods (same browser, many threads) -->
+        <profile>
+            <id>parallel</id>
+            <properties>
+                <suiteFile>testng-parallel-methods.xml</suiteFile>
+                <browser>chrome</browser>
+                <headless>true</headless>
+                <remoteUrl></remoteUrl>
+            </properties>
+        </profile>
+    </profiles>
+</project>

@@ -1,0 +1,317 @@
+# Selenium + TestNG POM Framework
+
+A lightweight, parallel-ready UI automation framework in Java using Selenium + TestNG with a clean Page Object Model (POM). Includes utilities for waits, Excel data, HTML reporting (Extent), screenshots on failure, and secure config via environment variables / `.env`.
+
+---
+
+## ✅ Prerequisites
+
+* **Java 17+** (`java -version`)
+* **Maven 3.9+** (`mvn -version`)
+* **Git** (optional)
+* Google **Chrome** installed (CI uses headless Chrome)
+
+---
+
+## 📦 Project Structure (Mentioned Framework Layout)
+
+```
+selenium-testng-framework/
+├── pom.xml
+├── testng.xml
+├── .env                       # local-only (gitignored)
+├── .gitignore
+│
+├── src
+│   ├── main
+│   │   └── java
+│   │       └── framework
+│   │           ├── core/               # Core driver & base page
+│   │           │   ├── BasePage.java
+│   │           │   ├── DriverFactory.java
+│   │           │   └── DriverManager.java
+│   │           │
+│   │           ├── util/               # Utilities
+│   │           │   ├── WaitUtils.java
+│   │           │   ├── SafeLog.java
+│   │           │   ├── ExcelUtil.java
+│   │           │   ├── ReportManager.java
+│   │           │   ├── TestListener.java
+│   │           │   └── ScreenshotUtil.java
+│   │           │
+│   │           ├── pages/              # Page Objects (POM)
+│   │           │   ├── LoginPage.java
+│   │           │   └── DashboardPage.java
+│   │           │
+│   │           └── config/             # Config loader
+│   │               └── Config.java
+│   │
+│   └── test
+│       └── java
+│           └── framework
+│               └── tests/              # TestNG tests
+│                   ├── BaseTest.java
+│                   ├── LoginTest.java
+│                   └── DashboardTest.java
+│
+└── src/test/resources/                 # Resources
+    ├── log4j2.xml
+    └── testdata/
+        ├── users.json
+        └── sample.xlsx
+```
+
+**Key points**
+
+* **Parallel-safe:** ThreadLocal WebDriver via `DriverManager`.
+* **POM:** All pages extend `BasePage` (waits, typing/clicking, secure typing, etc.).
+* **Reporting:** Extent HTML report + screenshots on failure via `TestListener`.
+* **Config:** `Config` reads System properties → Env vars → `.env` → default.
+* **Secrets:** Do **not** log raw secrets; use `SafeLog.mask()`.
+
+---
+
+## ⚙️ Configure Environment
+
+Create a local `.env` (do not commit):
+
+```
+BASE_URL=https://your-app-url
+APP_USERNAME=your-user
+APP_PASSWORD=your-password
+HEADLESS=true
+REMOTE_URL=
+```
+
+> CI (GitHub Actions) should set these as **repository secrets** instead of `.env`.
+
+---
+
+## ▶️ Run Tests (Maven commands)
+
+### Run the suite (parallel by class)
+
+```bash
+mvn clean test -Dsurefire.suiteXmlFiles=testng.xml
+```
+
+### Override properties at runtime
+
+```bash
+mvn clean test -DHEADLESS=false -DBASE_URL=https://staging.myapp
+```
+
+### Run a single test class
+
+```bash
+mvn -Dtest=framework.tests.LoginTest test
+```
+
+### Run a single test method
+
+```bash
+mvn -Dtest=framework.tests.LoginTest#canLoginInParallel test
+```
+
+### Include/Exclude groups (if you add @Test(groups={...}))
+
+```bash
+mvn test -Dgroups=smoke
+mvn test -DexcludedGroups=slow
+```
+
+### Run on Selenium Grid / Selenoid
+
+```bash
+mvn clean test -DREMOTE_URL=http://localhost:4444/wd/hub -DHEADLESS=true
+```
+
+### Set Chrome binary (rarely needed)
+
+```bash
+mvn test -Dwebdriver.chrome.driver=/path/to/chromedriver
+```
+
+---
+
+## 🧪 TestNG Suite (Parallel)
+
+`testng.xml` is already configured to run classes in parallel and register the listener:
+
+```xml
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="Selenium Suite" parallel="classes" thread-count="4">
+  <listeners>
+    <listener class-name="framework.util.TestListener"/>
+  </listeners>
+  <test name="UI Tests">
+    <packages>
+      <package name="framework.tests"/>
+    </packages>
+  </test>
+</suite>
+```
+
+Increase `thread-count` carefully depending on app stability and environment capacity.
+
+---
+
+## 📊 Reports & Artifacts
+
+* **Extent HTML report:** `target/reports/ExtentReport.html`
+* **Screenshots on failure:** `target/reports/screenshots/*.png`
+* **Surefire reports:** `target/surefire-reports/`
+
+Open `ExtentReport.html` after the run for a clean visual summary.
+
+---
+
+## ☁️ GitHub Actions CI
+
+Create `.github/workflows/ci.yml`:
+
+```yaml
+name: UI Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      APP_USERNAME: ${{ secrets.APP_USERNAME }}
+      APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+      HEADLESS: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run TestNG suite
+        run: mvn -B -q clean test -Dsurefire.suiteXmlFiles=testng.xml -DHEADLESS=true
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/**
+
+      - name: Upload Extent report & screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-reports
+          path: |
+            target/reports/**
+            target/reports/ExtentReport.html
+```
+
+Set repository **Secrets**: `BASE_URL`, `APP_USERNAME`, `APP_PASSWORD`.
+
+---
+
+## 🔄 Data-Driven Example (ExcelUtil)
+
+Place data in `src/test/resources/testdata/sample.xlsx` (sheet: `Users`, headers: `username`, `password`).
+
+```java
+@DataProvider(name = "users")
+public Object[][] users() {
+  var rows = ExcelUtil.readSheet("/testdata/sample.xlsx", "Users");
+  return rows.stream()
+      .map(m -> new Object[]{ m.get("username"), m.get("password") })
+      .toArray(Object[][]::new);
+}
+```
+
+---
+
+## 🧰 Troubleshooting
+
+* **Listener not found**: Ensure `framework.util.TestListener` exists under `src/main/java` and `testng.xml` has the correct FQCN.
+* **Dotenv not loading**: `.env` is optional—CI typically uses env vars. Confirm the dependency and run `mvn clean`.
+* **Driver errors**: Ensure Chrome is installed. In CI, we install Chrome; locally, Selenium Manager fetches drivers automatically.
+* **Parallel flakiness**: Avoid shared state; ensure unique test data per thread.
+
+---
+
+## 📜 License
+
+MIT (or your organization’s standard) — update as needed.
+
+
+
+Quick use
+
+When you run
+
+docker compose up -d
+
+
+Docker will create four containers:
+selenium-hub → the central controller.
+chrome → a Chrome browser node.
+firefox → a Firefox browser node.
+edge → an Edge browser node (optional).
+All these containers talk to each other automatically.
+
+
+How they work together
+
+The hub acts as the traffic controller.
+Each node (Chrome/Firefox/Edge) registers itself to the hub.
+Your test (via RemoteWebDriver) connects to the hub at localhost:4444/wd/hub.
+The hub picks the right browser node (based on your BROWSER setting) and runs the test there.
+The node sends results back to the hub, and your test sees it as if it were running locally.
+
+
+RUN
+
+Single browser (local or Grid):
+Runs all tests on one browser (default = Chrome, from testng.xml):
+Single browser (default profile)
+
+        # Local Chrome
+mvn clean test
+
+        # Grid Firefox
+           mvn clean test \
+                  -DBROWSER=chrome \
+                  -DHEADLESS=true \
+                  -DREMOTE_URL=http://localhost:4444/wd/hub
+
+Cross-browser (run all in one go)
+Cross-browser (Chrome+Firefox+Edge)
+
+# local drivers
+mvn -Pcross clean test
+# on Selenium Grid
+mvn -Pcross clean test -DREMOTE_URL=http://localhost:4444/wd/hub
+
+
+
+
+All test methods in parallel (same browser)
+Parallel methods (same browser, many threads)
+
+# local
+mvn -Pparallel clean test -DBROWSER=chrome
+# on Grid (scale nodes to >= thread-count)
+mvn -Pparallel clean test -DBROWSER=chrome -DREMOTE_URL=http://localhost:4444/wd/hub
+

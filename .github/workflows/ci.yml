@@ -1,0 +1,61 @@
+name: UI Tests (EC2 Grid)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: [self-hosted, ec2-grid]   # <- use your EC2 runner labels
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      APP_USERNAME: ${{ secrets.APP_USERNAME }}
+      APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+      HEADLESS: "true"
+      REMOTE_URL: "http://localhost:4444/wd/hub"  # hub is on same EC2
+
+    steps:
+      - name: Ensure Selenium Grid is running
+        working-directory: /home/ubuntu/grid
+        run: docker compose up -d
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      # No need to install Chrome locally; tests go to the Grid
+      - name: Run TestNG suite (single)
+        run: mvn -B -q clean test -DREMOTE_URL=$REMOTE_URL
+
+      # examples:
+      # - run: mvn -B -q -Pcross clean test -DREMOTE_URL=$REMOTE_URL
+      # - run: mvn -B -q -Pparallel clean test -DBROWSER=chrome -DREMOTE_URL=$REMOTE_URL
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/**
+
+      - name: Upload Extent report & screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-reports
+          path: |
+            target/reports/**
+            target/reports/ExtentReport.html

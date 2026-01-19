@@ -1,0 +1,110 @@
+name: UI Tests (EC2 Grid)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  #########################################
+  # 1️⃣ Start EC2 (controller job)
+  #########################################
+  start-ec2:
+    runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.out.outputs.instance_id }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Start EC2 Instance
+        run: |
+          aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
+
+      - name: Wait for EC2 to be running
+        run: |
+          aws ec2 wait instance-running --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
+
+      - id: out
+        run: echo "instance_id=${{ secrets.EC2_INSTANCE_ID }}" >> $GITHUB_OUTPUT
+
+
+  #########################################
+  # 2️⃣ Run UI Tests on self-hosted EC2
+  #########################################
+  test:
+    needs: start-ec2
+    runs-on: [self-hosted, ec2-grid]
+
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      APP_USERNAME: ${{ secrets.APP_USERNAME }}
+      APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+      HEADLESS: "true"
+      REMOTE_URL: "http://localhost:4444/wd/hub"
+
+    steps:
+      - name: Ensure Selenium Grid is running
+        working-directory: /home/ubuntu/grid
+        run: docker compose up -d
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Run TestNG suite (single)
+        run: mvn -B -q clean test -DREMOTE_URL=$REMOTE_URL
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/**
+
+      - name: Upload Extent report & screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-reports
+          path: |
+            target/reports/**
+            target/reports/ExtentReport.html
+
+
+  #########################################
+  # 3️⃣ Stop EC2 after tests finish
+  #########################################
+  stop-ec2:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Stop EC2 Instance
+        run: |
+          aws ec2 stop-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
